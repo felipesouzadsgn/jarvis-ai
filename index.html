@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Chosen Palette: "Nebula Flow" - Dark base with animated vibrant gradients, cyan/blue for interactive elements, inspired by ShadCN/UI for clean components. -->
+  <!-- Application Structure Plan: Single-page chat interface with a responsive, toggleable left sidebar for conversation history (Firestore). Features include Markdown rendering, animated background, summarize, translate, new conversation, and export to Markdown. Buttons are icon-only (Phosphor Icons) for a minimalist UI. -->
+  <!-- Visualization & Content Choices: 1. User Input: Standard. 2. API Call: JS fetch. 3. Agent Response: Markdown. 4. Background: CSS gradient. 5. Summarize: Phosphor Icon Button -> Gemini. 6. Translate: Phosphor Icon Button -> Gemini. 7. Conversation History: Sidebar lists conversations from Firestore; clicking loads a conversation. 8. New Conversation: Phosphor Icon Button clears current chat, starts new Firestore record. 9. Export Markdown: Phosphor Icon Button generates .md file from current chat. 10. Mobile Sidebar: Phosphor Hamburger icon toggles visibility. -->
+  <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. CSS animations for background. Firestore for persistence. Phosphor Icons via CDN. -->
+  <title>J.A.R.V.I.S. - Agente IA com Ícones Phosphor</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/@phosphor-icons/web"></script> <!-- Phosphor Icons Library -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@400;500;700&display=swap"
+    rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      color: #e0e0e0;
+      overflow-x: hidden;
+      overflow-y: hidden;
+    }
+
+    @keyframes gradientAnimation {
+      0% {
+        background-position: 0% 50%;
+      }
+
+      25% {
+        background-position: 100% 50%;
+      }
+
+      50% {
+        background-position: 0% 50%;
+      }
+
+      75% {
+        background-position: 50% 100%;
+      }
+
+      100% {
+        background-position: 0% 50%;
+      }
+    }
+
+    .animated-gradient-mesh {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+      background: linear-gradient(45deg, #0a0f1f, #101830, #0d253f, #0f3057, #101830, #0a0f1f);
+      background-size: 300% 300%;
+      animation: gradientAnimation 25s ease infinite;
+    }
+
+    .main-layout {
+      display: flex;
+      height: 100vh;
+      width: 100%;
+    }
+
+    .sidebar {
+      width: 280px;
+      background-color: rgba(10, 20, 35, 0.92);
+      backdrop-filter: blur(10px);
+      border-right: 1px solid rgba(56, 189, 248, 0.25);
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.3s ease-in-out;
+      z-index: 40;
+    }
+
+    .sidebar-header {
+      margin-bottom: 1rem;
+    }
+
+    .icon-button {
+      background-color: #0ea5e9;
+      color: white;
+      padding: 0.6rem;
+      border-radius: 0.375rem;
+      text-align: center;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+
+    .icon-button i {
+      font-size: 1.5rem;
+      /* Default icon size */
+    }
+
+    .icon-button:hover {
+      background-color: #0284c7;
+    }
+
+    .new-chat-btn i {
+      font-size: 1.25rem;
+    }
+
+    /* Slightly larger for new chat */
+
+    .conversation-list-item {
+      padding: 0.6rem 0.8rem;
+      margin-bottom: 0.25rem;
+      border-radius: 0.25rem;
+      cursor: pointer;
+      font-size: 0.8rem;
+      color: #cbd5e1;
+      transition: background-color 0.2s, color 0.2s;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .conversation-list-item:hover {
+      background-color: rgba(56, 189, 248, 0.15);
+      color: #e0f2fe;
+    }
+
+    .conversation-list-item.active {
+      background-color: rgba(56, 189, 248, 0.25);
+      color: #ffffff;
+      font-weight: 500;
+    }
+
+    .jarvis-container {
+      flex-grow: 1;
+      background-color: rgba(17, 24, 39, 0.85);
+      backdrop-filter: blur(12px) saturate(150%);
+      border-left: 1px solid rgba(56, 189, 248, 0.1);
+      box-shadow: 0 0 35px rgba(56, 189, 248, 0.15);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      max-height: 100vh;
+    }
+
+    @media (max-width: 767px) {
+      .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100%;
+        transform: translateX(-100%);
+      }
+
+      .sidebar.open {
+        transform: translateX(0);
+      }
+
+      .jarvis-container {
+        border-left: none;
+      }
+    }
+
+    @media (min-width: 768px) {
+      .sidebar-toggle-button {
+        display: none;
+      }
+    }
+
+    .sidebar-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      z-index: 30;
+      display: none;
+    }
+
+    .sidebar.open+.sidebar-overlay {
+      display: block;
+    }
+
+
+    .chat-bubble {
+      padding: 0.75rem 1.15rem;
+      border-radius: 0.5rem;
+      margin-bottom: 0.75rem;
+      max-width: 90%;
+      word-wrap: break-word;
+      font-size: 0.925rem;
+      line-height: 1.6;
+    }
+
+    .user-bubble {
+      background-color: #0284c7;
+      color: #ffffff;
+      align-self: flex-end;
+      border-bottom-right-radius: 0.125rem;
+    }
+
+    .ai-bubble {
+      background-color: #374151;
+      color: #f3f4f6;
+      align-self: flex-start;
+      border-bottom-left-radius: 0.125rem;
+    }
+
+    .ai-bubble .markdown-content h1,
+    .ai-bubble .markdown-content h2,
+    .ai-bubble .markdown-content h3 {
+      margin-top: 0.8rem;
+      margin-bottom: 0.4rem;
+      line-height: 1.3;
+      font-weight: 600;
+      color: #93c5fd;
+    }
+
+    .ai-bubble .markdown-content h1 {
+      font-size: 1.4em;
+    }
+
+    .ai-bubble .markdown-content h2 {
+      font-size: 1.25em;
+    }
+
+    .ai-bubble .markdown-content h3 {
+      font-size: 1.1em;
+    }
+
+    .ai-bubble .markdown-content p {
+      margin-bottom: 0.6rem;
+    }
+
+    .ai-bubble .markdown-content ul,
+    .ai-bubble .markdown-content ol {
+      margin-left: 1.5rem;
+      margin-bottom: 0.6rem;
+    }
+
+    .ai-bubble .markdown-content li {
+      margin-bottom: 0.2rem;
+    }
+
+    .ai-bubble .markdown-content code:not(pre code) {
+      background-color: rgba(0, 0, 0, 0.2);
+      color: #fda4af;
+      padding: 0.1em 0.3em;
+      border-radius: 0.2rem;
+      font-size: 0.85em;
+    }
+
+    .ai-bubble .markdown-content pre {
+      background-color: #1f2937;
+      color: #d1d5db;
+      padding: 0.8rem;
+      border-radius: 0.375rem;
+      overflow-x: auto;
+      margin-bottom: 0.6rem;
+      font-size: 0.875em;
+    }
+
+    .ai-bubble .markdown-content pre code {
+      background-color: transparent;
+      color: inherit;
+      padding: 0;
+      border-radius: 0;
+      font-size: inherit;
+    }
+
+    .ai-bubble .markdown-content a {
+      color: #60a5fa;
+      text-decoration: underline;
+    }
+
+    .ai-bubble .markdown-content a:hover {
+      color: #3b82f6;
+    }
+
+    .translate-btn {
+      background-color: rgba(0, 191, 255, 0.1);
+      border: 1px solid rgba(0, 191, 255, 0.3);
+      color: #7dd3fc;
+      padding: 0.3rem;
+      font-size: 0.75rem;
+      /* For the icon itself */
+      border-radius: 0.25rem;
+      margin-top: 0.5rem;
+      margin-left: 0.5rem;
+      cursor: pointer;
+      transition: background-color 0.2s, color 0.2s;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .translate-btn i {
+      font-size: 1.1rem;
+      /* Phosphor icon size */
+    }
+
+    .translate-btn:hover {
+      background-color: rgba(0, 191, 255, 0.2);
+      color: #e0f2fe;
+    }
+
+    .chat-container-bg {
+      background-color: rgba(17, 24, 39, 0.5);
+      border: 1px solid rgba(56, 189, 248, 0.1);
+      flex-grow: 1;
+      min-height: 200px;
+    }
+
+    #user-input {
+      background-color: #1f2937;
+      border: 1px solid #4b5563;
+      color: #f3f4f6;
+      font-size: 1rem;
+      padding: 0.85rem;
+    }
+
+    #user-input::placeholder {
+      color: #9ca3af;
+    }
+
+    #user-input:focus {
+      border-color: #0ea5e9;
+      box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.3);
+    }
+
+    #send-button {
+      background-color: #0ea5e9;
+      color: #ffffff;
+      font-weight: 600;
+      padding: 0.85rem;
+      font-size: 1rem;
+      /* For the icon itself */
+      transition: background-color 0.2s ease, transform 0.1s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #send-button i {
+      font-size: 1.35rem;
+    }
+
+    #send-button:hover {
+      background-color: #0284c7;
+    }
+
+    #send-button:active {
+      transform: scale(0.98);
+    }
+
+    .feature-buttons-container {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    #summarize-button,
+    #export-markdown-button {
+      flex-grow: 1;
+      padding: 0.75rem;
+    }
+
+    #summarize-button i,
+    #export-markdown-button i {
+      font-size: 1.2rem;
+    }
+
+
+    .header-font {
+      font-family: 'Orbitron', sans-serif;
+      color: #38bdf8;
+      text-shadow: 0 0 10px rgba(56, 189, 248, 0.5), 0 0 20px rgba(56, 189, 248, 0.3);
+    }
+
+    .sidebar-toggle-button {
+      background: none;
+      border: none;
+      color: #7dd3fc;
+      cursor: pointer;
+      padding: 0.5rem;
+      margin-right: 0.5rem;
+      z-index: 50;
+    }
+
+    .sidebar-toggle-button i {
+      font-size: 1.75rem;
+    }
+
+    @media (min-width: 768px) {
+      .sidebar-toggle-button {
+        display: none;
+      }
+    }
+
+
+    .loading-spinner-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding-top: 0.75rem;
+    }
+
+    .loading-spinner {
+      width: 28px;
+      height: 28px;
+      border: 3px solid rgba(56, 189, 248, 0.25);
+      border-left-color: #0ea5e9;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .loading-text {
+      color: #9ca3af;
+      font-size: 0.875rem;
+      margin-left: 0.75rem;
+    }
+  </style>
+</head>
+
+<body class="flex items-center justify-center min-h-screen p-0">
+  <div class="animated-gradient-mesh"></div>
+
+  <div class="main-layout">
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <button id="new-chat-button" class="icon-button new-chat-btn" title="Nova Conversa"><i
+            class="ph ph-plus-circle"></i></button>
+      </div>
+      <h2 class="text-sm font-semibold text-sky-400 mb-2 px-1">Histórico</h2>
+      <div id="conversation-history-list" class="flex-grow overflow-y-auto">
+        <!-- Itens do histórico de conversas -->
+      </div>
+    </aside>
+    <div id="sidebar-overlay" class="sidebar-overlay"></div>
+
+
+    <main class="jarvis-container w-full max-w-none shadow-2xl p-4 sm:p-6">
+      <header class="mb-4 sm:mb-6 text-center flex items-center">
+        <button id="sidebar-toggle-button" class="sidebar-toggle-button md:hidden" title="Alternar Menu"><i
+            class="ph ph-list"></i></button>
+        <div class="flex-grow">
+          <h1 class="text-3xl sm:text-4xl font-bold header-font">J.A.R.V.I.S.</h1>
+          <p class="text-xs sm:text-sm text-sky-300 mt-1">Criado e Desenvolvido por Felipe Souza</p>
+        </div>
+      </header>
+
+      <div id="chat-container"
+        class="chat-container-bg overflow-y-auto mb-4 p-3 sm:p-4 rounded-md flex flex-col space-y-2">
+        <!-- Mensagens do Chat -->
+      </div>
+
+      <div class="mt-auto">
+        <div class="feature-buttons-container">
+          <button id="summarize-button" class="icon-button rounded-md" title="Resumir Conversa"><i
+              class="ph ph-scroll"></i></button>
+          <button id="export-markdown-button" class="icon-button rounded-md" title="Exportar para Markdown"><i
+              class="ph ph-floppy-disk-back"></i></button>
+        </div>
+        <div class="flex items-center">
+          <input type="text" id="user-input" class="flex-grow rounded-l-md focus:outline-none"
+            placeholder="Digite sua mensagem aqui...">
+          <button id="send-button" class="rounded-r-md" title="Enviar Mensagem"><i
+              class="ph ph-paper-plane-tilt"></i></button>
+        </div>
+        <div id="loading-indicator" class="loading-spinner-container hidden">
+          <div class="loading-spinner"></div>
+          <span class="loading-text">J.A.R.V.I.S. ESTÁ PENSANDO...</span>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script type="module">
+    import {initializeApp, getApps, getApp} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import {getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import {
+      getFirestore,
+      collection,
+      addDoc,
+      doc,
+      setDoc,
+      getDoc,
+      query,
+      orderBy,
+      onSnapshot,
+      serverTimestamp,
+      limit
+    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    // DOM Element References
+    const chatContainer = document.getElementById('chat-container');
+    const userInput = document.getElementById('user-input');
+    const sendButton = document.getElementById('send-button');
+    const summarizeButton = document.getElementById('summarize-button');
+    const exportMarkdownButton = document.getElementById('export-markdown-button');
+    const newChatButton = document.getElementById('new-chat-button');
+    const conversationHistoryList = document.getElementById('conversation-history-list');
+    const loadingIndicator = document.getElementById('loading-indicator');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarToggleButton = document.getElementById('sidebar-toggle-button');
+    const sidebarOverlay = document.getElementById('sidebar-overlay');
+
+
+    // API Configuration
+    const API_KEY = "AIzaSyDVCKKMJPOUfCEAImb7weVojJcta22WLnY";
+    const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`;
+
+    // Firebase Configuration
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+
+    let db, auth;
+    let currentUserId = null;
+    let currentConversationId = null;
+    let chatHistory = [];
+    let unsubscribeConversations = null;
+
+    if (firebaseConfig) {
+      try {
+        const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+        db = getFirestore(app);
+        auth = getAuth(app);
+      } catch (e) {console.error("Erro ao inicializar Firebase:", e);}
+    } else {console.warn("Configuração do Firebase não encontrada.");}
+
+    function simpleMarkdownToHtml(markdown) {
+      if (typeof markdown !== 'string' || !markdown) return '';
+      let html = markdown;
+      html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>').replace(/^## (.*$)/gim, '<h2>$1</h2>').replace(/^# (.*$)/gim, '<h1>$1</h1>');
+      html = html.replace(/```([\s\S]*?)```/g, (match, rawContent) => {
+        const lines = rawContent.split('\n'); let lang = ''; let codeContent = rawContent;
+        if (lines.length > 0 && lines[0].trim() !== '' && !lines[0].includes(' ')) {lang = lines[0].trim(); codeContent = lines.slice(1).join('\n');}
+        const escapedContent = codeContent.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return `<pre><code${lang ? ` class="language-${lang}"` : ''}>${escapedContent.trim()}</code></pre>`;
+      });
+      html = html.replace(/\*\*(.*?)\*\*|__(.*?)__/g, '<strong>$1$2</strong>').replace(/\*(.*?)\*|_(.*?)_/g, '<em>$1$2</em>').replace(/~~(.*?)~~/g, '<del>$1</del>');
+      html = html.replace(/^\s*[-*+]\s+(.*)/gim, '<li>$1</li>').replace(/^\s*\d+\.\s+(.*)/gim, '<li>$1</li>');
+      html = html.replace(/((?:<li>.*?<\/li>\s*)+)/g, (match) => {
+        if (match.includes('<li') && /^\s*\d+\./.test(match.trim().split('\n')[0].replace(/<li>/, ''))) {return `<ol>${match}</ol>`;}
+        return `<ul>${match}</ul>`;
+      });
+      html = html.replace(/<\/ul>\s*<ul>/g, '').replace(/<\/ol>\s*<ol>/g, '');
+      html = html.replace(/`([^`]+)`/g, (match, rawContent) => {const escapedContent = rawContent.replace(/</g, '&lt;').replace(/>/g, '&gt;'); return `<code>${escapedContent}</code>`;});
+      html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+      html = html.split('\n').map(line => {
+        const trimmedLine = line.trim(); if (trimmedLine.length === 0) return '';
+        if (/^<(h[1-3]|ul|ol|li|pre|p|a|strong|em|del|code)/.test(trimmedLine)) {return line;}
+        return `<p>${line}</p>`;
+      }).join('');
+      html = html.replace(/<p><\/p>/g, ''); return html;
+    }
+
+    function displayMessage(text, sender, originalTextForTranslation = null) {
+      const messageDiv = document.createElement('div');
+      messageDiv.classList.add('chat-bubble', sender === 'user' ? 'user-bubble' : 'ai-bubble');
+      const contentWrapper = document.createElement('div');
+      contentWrapper.classList.add('markdown-content');
+      if (sender === 'ai') {contentWrapper.innerHTML = simpleMarkdownToHtml(text);}
+      else {const textNode = document.createTextNode(text); contentWrapper.appendChild(textNode);}
+      messageDiv.appendChild(contentWrapper);
+      if (sender === 'ai' && originalTextForTranslation) {
+        const translateButton = document.createElement('button');
+        translateButton.classList.add('translate-btn');
+        translateButton.innerHTML = '<i class="ph ph-translate"></i>';
+        translateButton.title = "Traduzir para Inglês";
+        translateButton.onclick = (e) => {e.stopPropagation(); handleTranslateMessage(originalTextForTranslation, translateButton);};
+        messageDiv.appendChild(translateButton);
+      }
+      chatContainer.appendChild(messageDiv);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    function setLoadingState(isLoading, buttonToDisable = null) {
+      loadingIndicator.classList.toggle('hidden', !isLoading);
+      [sendButton, userInput, summarizeButton, exportMarkdownButton, newChatButton].forEach(el => el.disabled = isLoading);
+      if (buttonToDisable) buttonToDisable.disabled = isLoading;
+      if (!isLoading) userInput.focus();
+    }
+
+    function renderConversationHistory(conversations) {
+      conversationHistoryList.innerHTML = '';
+      if (conversations.length === 0) {
+        const noConvoItem = document.createElement('div');
+        noConvoItem.className = 'text-xs text-gray-500 italic text-center py-2';
+        noConvoItem.textContent = 'Nenhuma conversa anterior.';
+        conversationHistoryList.appendChild(noConvoItem);
+        return;
+      }
+      conversations.forEach(convo => {
+        const item = document.createElement('div');
+        item.className = 'conversation-list-item';
+        item.dataset.id = convo.id; // Correctly assign dataset.id
+        const firstUserMessage = convo.history?.find(msg => msg.role === 'user')?.parts[0]?.text;
+        item.textContent = firstUserMessage ? firstUserMessage.substring(0, 25) + (firstUserMessage.length > 25 ? '...' : '') : `Conversa de ${new Date(convo.createdAt?.toDate()).toLocaleDateString('pt-BR')}`;
+        item.title = firstUserMessage || `Conversa de ${new Date(convo.createdAt?.toDate()).toLocaleString('pt-BR')}`;
+
+        if (convo.id === currentConversationId) item.classList.add('active');
+        item.onclick = () => loadSpecificConversation(convo.id);
+        conversationHistoryList.appendChild(item);
+      });
+    }
+
+    function clearChatDisplay() {chatContainer.innerHTML = '';}
+
+    async function saveConversation() {
+      if (!db || !currentUserId || !currentConversationId || chatHistory.length === 0) return;
+      try {
+        const convoRef = doc(db, `artifacts/${appId}/users/${currentUserId}/conversations/${currentConversationId}`);
+        await setDoc(convoRef, {history: chatHistory, updatedAt: serverTimestamp()}, {merge: true});
+      } catch (error) {console.error("Erro ao salvar conversa:", error);}
+    }
+
+    async function createNewConversation() {
+      clearChatDisplay(); chatHistory = [];
+      const initialAiMessage = "Olá! Estou online e pronto para auxiliar. Como posso te ajudar hoje?";
+      chatHistory.push({role: "model", parts: [{text: initialAiMessage}]});
+      displayMessage(initialAiMessage, "ai", initialAiMessage);
+
+      if (!db || !currentUserId) {currentConversationId = `temp-${Date.now()}`; return;}
+      try {
+        const newConvoRef = await addDoc(collection(db, `artifacts/${appId}/users/${currentUserId}/conversations`), {
+          history: chatHistory, createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+        });
+        currentConversationId = newConvoRef.id;
+      } catch (error) {console.error("Erro ao criar nova conversa:", error); currentConversationId = `temp-${Date.now()}`;}
+      document.querySelectorAll('.conversation-list-item.active').forEach(el => el.classList.remove('active'));
+      const newActiveItemInList = document.querySelector(`.conversation-list-item[data-id="${currentConversationId}"]`);
+
+      if (newActiveItemInList) {
+        newActiveItemInList.classList.add('active');
+      } else if (currentConversationId && !currentConversationId.startsWith('temp-')) {
+        const item = document.createElement('div');
+        item.className = 'conversation-list-item active';
+        item.dataset.id = currentConversationId; // Correctly assign dataset.id
+        item.textContent = `Nova Conversa (${new Date().toLocaleTimeString('pt-BR').substring(0, 5)})`;
+        item.title = `Nova Conversa (${new Date().toLocaleString('pt-BR')})`;
+        item.onclick = () => loadSpecificConversation(currentConversationId);
+        conversationHistoryList.prepend(item);
+      }
+      if (window.innerWidth < 768 && sidebar.classList.contains('open')) {
+        sidebar.classList.remove('open');
+        sidebarOverlay.style.display = 'none';
+      }
+    }
+
+    async function loadSpecificConversation(convoId) {
+      if (!db || !currentUserId || currentConversationId === convoId) return;
+      try {
+        const convoRef = doc(db, `artifacts/${appId}/users/${currentUserId}/conversations/${convoId}`);
+        const convoSnap = await getDoc(convoRef);
+        if (convoSnap.exists()) {
+          const data = convoSnap.data(); chatHistory = data.history || []; currentConversationId = convoId;
+          clearChatDisplay();
+          chatHistory.forEach(msg => displayMessage(msg.parts[0].text, msg.role, msg.role === 'ai' ? msg.parts[0].text : null));
+          document.querySelectorAll('.conversation-list-item.active').forEach(el => el.classList.remove('active'));
+          const activeItem = document.querySelector(`.conversation-list-item[data-id="${convoId}"]`);
+          if (activeItem) activeItem.classList.add('active');
+        } else {console.warn("Conversa não encontrada:", convoId); createNewConversation();}
+      } catch (error) {console.error("Erro ao carregar conversa:", error);}
+      if (window.innerWidth < 768 && sidebar.classList.contains('open')) {
+        sidebar.classList.remove('open');
+        sidebarOverlay.style.display = 'none';
+      }
+    }
+
+    function listenForConversations() {
+      if (!db || !currentUserId) return;
+      if (unsubscribeConversations) unsubscribeConversations();
+      const q = query(collection(db, `artifacts/${appId}/users/${currentUserId}/conversations`), orderBy("createdAt", "desc"), limit(50));
+      unsubscribeConversations = onSnapshot(q, (querySnapshot) => {
+        const conversations = querySnapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+        renderConversationHistory(conversations);
+        if (!currentConversationId && conversations.length > 0) {loadSpecificConversation(conversations[0].id);}
+        else if (!currentConversationId && conversations.length === 0) {createNewConversation();}
+      }, (error) => {console.error("Erro ao ouvir conversas:", error);});
+    }
+
+    async function callGeminiApiForTask(taskSpecificContents, actionDescription, buttonToDisable = null) {
+      setLoadingState(true, buttonToDisable);
+      try {
+        const response = await fetch(GEMINI_API_URL, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({contents: taskSpecificContents})});
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(`Falha na API Gemini (${actionDescription}): ${errorData.error?.message || response.statusText || "Erro desconhecido"}`);
+        }
+        const result = await response.json();
+        if (result.candidates && result.candidates[0]?.content?.parts?.[0]?.text) {return result.candidates[0].content.parts[0].text;}
+        throw new Error(`Resposta inválida da IA (${actionDescription}).`);
+      } catch (error) {
+        console.error(`Erro em ${actionDescription}:`, error);
+        displayMessage(error.message || `Ocorreu um erro ao ${actionDescription.toLowerCase()}.`, 'ai'); return null;
+      } finally {setLoadingState(false, buttonToDisable);}
+    }
+
+    async function handleSummarizeConversation() {
+      if (chatHistory.length === 0) {displayMessage("Não há conversa para resumir.", "ai"); return;}
+      const summaryPrompt = "✨ Por favor, resuma a conversa acima de forma concisa, destacando os principais pontos discutidos.";
+      const conversationToSummarize = [...chatHistory, {role: "user", parts: [{text: summaryPrompt}]}];
+      const summaryText = await callGeminiApiForTask(conversationToSummarize, "Resumir Conversa", summarizeButton);
+      if (summaryText) displayMessage(`Resumo da Conversa:\n${summaryText}`, "ai");
+    }
+
+    async function handleTranslateMessage(textToTranslate, buttonElement) {
+      if (!textToTranslate) return;
+      const translatePrompt = `✨ Traduza o seguinte texto para Inglês (English): "${textToTranslate}"`;
+      const translationContext = [{role: "user", parts: [{text: translatePrompt}]}];
+      const translatedText = await callGeminiApiForTask(translationContext, "Traduzir Mensagem", buttonElement);
+      if (translatedText) displayMessage(`Tradução (Inglês):\n${translatedText}`, "ai");
+    }
+
+    function handleExportMarkdown() {
+      if (chatHistory.length === 0) {displayMessage("Não há conversa para exportar.", "ai"); return;}
+      let markdownContent = `# J.A.R.V.I.S. Chat Export - ${new Date().toLocaleString('pt-BR')}\n\n`;
+      chatHistory.forEach(msg => {markdownContent += `**${msg.role === 'user' ? 'Você' : 'J.A.R.V.I.S.'}:**\n${msg.parts[0].text}\n\n---\n\n`;});
+      const blob = new Blob([markdownContent], {type: 'text/markdown;charset=utf-8'});
+      const url = URL.createObjectURL(blob);
+      const a = Object.assign(document.createElement('a'), {href: url, download: `JARVIS_Chat_${new Date().toISOString().replace(/:/g, '-')}.md`});
+      document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    }
+
+    async function handleSendMessage() {
+      const userMessage = userInput.value.trim(); if (!userMessage) return;
+      if (API_KEY === "SUA_CHAVE_API_AQUI" || API_KEY === "") {displayMessage("CONFIGURAÇÃO NECESSÁRIA: Chave API não configurada.", 'ai'); userInput.value = ''; return;}
+      displayMessage(userMessage, 'user');
+      chatHistory.push({role: "user", parts: [{text: userMessage}]});
+      await saveConversation();
+      userInput.value = ''; setLoadingState(true);
+      try {
+        const payload = {contents: chatHistory};
+        const response = await fetch(GEMINI_API_URL, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(`Falha na API Gemini: ${errorData.error?.message || response.statusText || "Erro desconhecido"}`);
+        }
+        const result = await response.json();
+        if (result.candidates && result.candidates[0]?.content?.parts?.[0]?.text) {
+          const aiResponseText = result.candidates[0].content.parts[0].text;
+          displayMessage(aiResponseText, "ai", aiResponseText);
+          chatHistory.push({role: "model", parts: [{text: aiResponseText}]});
+          await saveConversation();
+        } else {throw new Error("Resposta inválida ou vazia da IA.");}
+      } catch (error) {console.error("Erro no chat:", error); displayMessage(error.message || "Ocorreu um erro no chat.", 'ai');}
+      finally {setLoadingState(false);}
+    }
+
+    function setupSidebarToggle() {
+      if (sidebarToggleButton && sidebar && sidebarOverlay) {
+        sidebarToggleButton.addEventListener('click', (e) => {
+          e.stopPropagation();
+          sidebar.classList.toggle('open');
+          sidebarOverlay.style.display = sidebar.classList.contains('open') ? 'block' : 'none';
+        });
+        sidebarOverlay.addEventListener('click', () => {
+          sidebar.classList.remove('open');
+          sidebarOverlay.style.display = 'none';
+        });
+      }
+    }
+
+    async function initializeChat() {
+      setupSidebarToggle();
+      if (!auth || !db) {
+        console.warn("Firebase não inicializado. Iniciando chat sem persistência.");
+        createNewConversation();
+      } else {
+        onAuthStateChanged(auth, async (user) => {
+          if (user) {
+            currentUserId = user.uid;
+            listenForConversations();
+          } else {
+            try {
+              if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                await signInWithCustomToken(auth, __initial_auth_token);
+              } else {
+                await signInAnonymously(auth);
+              }
+            } catch (error) {
+              console.error("Erro na autenticação:", error);
+              displayMessage("Erro: Falha na autenticação para histórico.", "ai");
+              createNewConversation();
+            }
+          }
+        });
+      }
+      sendButton.addEventListener('click', handleSendMessage);
+      summarizeButton.addEventListener('click', handleSummarizeConversation);
+      exportMarkdownButton.addEventListener('click', handleExportMarkdown);
+      newChatButton.addEventListener('click', createNewConversation);
+      userInput.addEventListener('keypress', (e) => e.key === 'Enter' && handleSendMessage());
+      userInput.focus();
+    }
+    initializeChat();
+  </script>
+</body>
+
+</html>
